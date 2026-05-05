@@ -12,8 +12,11 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     llm_model: str = "llama3"  # llama3 | mistral
 
-    # NLLB translation (Phase 2)
+    # NLLB translation (Phase 2) — supports 200+ languages
+    # Input:  ANY language → English  (for AI processing)
+    # Output: English → doctor's chosen language  (for note delivery)
     nllb_model: str = "facebook/nllb-200-distilled-600M"
+    default_output_language: str = "en"  # doctor's preferred note output language
 
     # Server
     frontend_origin: str = "http://localhost:5173"
