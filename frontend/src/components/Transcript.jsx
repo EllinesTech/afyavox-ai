@@ -26,7 +26,7 @@ export default function TranscriptPanel({ transcript, language, status, error })
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h2 className="text-white font-semibold text-sm uppercase tracking-widest">Transcript</h2>
-          {langLabel && status === "done" && (
+          {langLabel && (status === "done" || status === "streaming") && (
             <span
               data-testid="language-badge"
               className="text-xs px-2 py-0.5 rounded-full bg-[#00D4FF]/10 text-[#00D4FF] border border-[#00D4FF]/20"
@@ -62,21 +62,35 @@ export default function TranscriptPanel({ transcript, language, status, error })
         </div>
       )}
 
-      {/* Transcript text */}
-      {(status === "done" || (status === "error" && transcript)) && (
+      {/* Transcript text — shown during streaming AND done */}
+      {(status === "done" || status === "streaming" || (status === "error" && transcript)) && (
         <p
           data-testid="transcript-text"
           className="transcript-text text-white/90 text-sm leading-relaxed whitespace-pre-wrap flex-1"
         >
           {transcript}
+          {status === "streaming" && (
+            <span className="inline-block w-2 h-4 bg-[#00D4FF] ml-1 animate-pulse align-middle" />
+          )}
         </p>
       )}
 
       {/* Idle placeholder */}
       {status === "idle" && (
-        <p className="text-[#8892A4] text-sm italic">
-          Transcript will appear here after recording...
-        </p>
+        <div className="flex-1 flex flex-col items-center justify-center gap-2 py-6">
+          <div className="w-8 h-8 rounded-full border border-[#1E2A3A] flex items-center justify-center">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8892A4" strokeWidth="1.5">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            </svg>
+          </div>
+          <p className="text-[#8892A4] text-sm italic text-center">
+            Transcript appears here live as you speak
+          </p>
+          <p className="text-[#8892A4]/50 text-xs text-center">
+            Supports Kikuyu, Luo, Kisii, Swahili, Arabic, Chinese, Korean, and 200+ more
+          </p>
+        </div>
       )}
     </div>
   );

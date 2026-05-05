@@ -37,7 +37,8 @@ def health_check():
 
 # ── Routers ──────────────────────────────────────────────────────
 from app.api.transcribe import router as transcribe_router  # noqa: E402
+from app.api.ws_transcribe import router as ws_router        # noqa: E402
 app.include_router(transcribe_router)
+app.include_router(ws_router)
 
 # Phase 3: from app.api.notes import router as notes_router
-# Phase 5: from app.api.ws_transcribe import router as ws_router
