@@ -6,7 +6,10 @@ class Settings(BaseSettings):
     version: str = "0.1.0"
 
     # Whisper (local — no API key required)
-    whisper_model: str = "base"  # base | small | medium | large
+    # small = best balance of speed + accuracy for African languages (Kikuyu, Luo, Kisii, Swahili)
+    # base  = faster but poor on low-resource languages
+    # medium/large = most accurate but very slow on CPU
+    whisper_model: str = "small"  # base | small | medium | large
 
     # Ollama local LLM (Phase 3)
     ollama_base_url: str = "http://localhost:11434"

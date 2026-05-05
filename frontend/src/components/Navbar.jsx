@@ -5,21 +5,20 @@ export default function Navbar() {
     <nav className="fixed top-0 left-0 right-0 z-50 h-16 bg-[#111827]/95 backdrop-blur-sm border-b border-[#1E2A3A] flex items-center justify-between px-6">
       {/* Logo + name */}
       <div className="flex items-center gap-3">
-        {/* Icon logo — standalone icon, no background */}
+        {/* Standalone logo — no background */}
         <img
-          src="/Logo/Afyavox Logo icon.png"
+          src="/Logo/Afyavox Logo no bg.png"
           alt="AfyaVox"
-          className="w-9 h-9 object-contain"
+          className="w-8 h-8 object-contain"
           onError={(e) => {
-            // Fallback: show a cyan circle with A
             e.target.style.display = "none";
             e.target.nextSibling.style.display = "flex";
           }}
         />
-        {/* Fallback icon */}
+        {/* Fallback */}
         <div
           style={{ display: "none" }}
-          className="w-9 h-9 rounded-full bg-[#00D4FF]/20 border border-[#00D4FF]/40 items-center justify-center text-[#00D4FF] font-bold text-sm"
+          className="w-8 h-8 rounded-full bg-[#00D4FF]/20 border border-[#00D4FF]/40 items-center justify-center text-[#00D4FF] font-bold text-sm"
         >
           A
         </div>

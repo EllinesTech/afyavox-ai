@@ -30,12 +30,12 @@ export default function App() {
 
       <main className="pt-20 pb-12 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto">
 
-        {/* Hero — logo with transparent background */}
+        {/* Hero — large transparent logo */}
         <div className="text-center mb-8">
           <img
             src="/Logo/Afyavox Logo big no bg.png"
             alt="AfyaVox AI"
-            className="h-20 mx-auto mb-3 object-contain drop-shadow-[0_0_20px_rgba(0,212,255,0.3)]"
+            className="h-32 sm:h-40 mx-auto mb-4 object-contain drop-shadow-[0_0_30px_rgba(0,212,255,0.4)]"
             onError={(e) => {
               e.target.style.display = "none";
             }}

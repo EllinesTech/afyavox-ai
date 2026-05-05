@@ -96,9 +96,15 @@ class WhisperService:
 
             result = self._model.transcribe(
                 audio_path,
-                language=language,
+                language=language,        # None = auto-detect (supports Kikuyu, Luo, Kisii, Swahili, etc.)
                 task="transcribe",
-                fp16=False,
+                fp16=False,               # CPU doesn't support fp16
+                beam_size=1,              # fastest CPU inference (greedy decoding)
+                best_of=1,               # no sampling — faster
+                temperature=0,           # deterministic, faster
+                condition_on_previous_text=False,  # avoid hallucination loops
+                # Hint Whisper toward African + Asian languages for better detection
+                initial_prompt="Medical consultation. Languages may include Swahili, Kikuyu, Luo, Kisii, English, Arabic, Chinese, Korean, French, Hindi.",
             )
 
             transcript = result.get("text", "").strip()
