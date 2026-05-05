@@ -1,24 +1,42 @@
-# Python
+# ── Python ───────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
 venv/
+env/
 dist/
 build/
+*.so
+.pytest_cache/
+.hypothesis/
 
-# Env
+# ── Environment / Secrets ────────────────────────────────────────
 .env
 *.env
+!.env.example
 
-# Node
+# ── Node ─────────────────────────────────────────────────────────
 node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/coverage/
 
-# OS
+# ── Whisper model cache ──────────────────────────────────────────
+~/.cache/whisper/
+
+# ── OS ───────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+*.swp
 
-# Kiro
+# ── IDE ──────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+
+# ── Kiro (dev tool — not part of product) ───────────────────────
 .kiro/
+.claude/
+
+# ── Docker ───────────────────────────────────────────────────────
+*.log
