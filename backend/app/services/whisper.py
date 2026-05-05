@@ -5,10 +5,33 @@ Runs locally — no API key required. Patient audio never leaves the network.
 import logging
 import tempfile
 import os
+import subprocess
 from dataclasses import dataclass
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# ffmpeg path — try system PATH first, then known winget install location
+FFMPEG_CANDIDATES = [
+    "ffmpeg",
+    r"C:\Users\Administrator\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.1-full_build\bin\ffmpeg.exe",
+]
+
+def _find_ffmpeg() -> Optional[str]:
+    for cmd in FFMPEG_CANDIDATES:
+        try:
+            r = subprocess.run([cmd, "-version"], capture_output=True, timeout=5)
+            if r.returncode == 0:
+                return cmd
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
+    return None
+
+FFMPEG = _find_ffmpeg()
+if FFMPEG:
+    logger.info("ffmpeg found: %s", FFMPEG)
+else:
+    logger.warning("ffmpeg not found — WebM audio may fail to decode")
 
 
 @dataclass
@@ -51,16 +74,31 @@ class WhisperService:
             raise RuntimeError("WhisperService: model not loaded. Call load_model() at startup.")
 
         tmp_path = None
+        wav_path = None
         try:
             # Write to temp file — Whisper requires a file path, not bytes
             with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
                 tmp.write(audio_bytes)
                 tmp_path = tmp.name
 
+            # Convert WebM → WAV using ffmpeg (Whisper decodes WAV natively)
+            audio_path = tmp_path
+            if FFMPEG:
+                wav_path = tmp_path.replace(".webm", ".wav")
+                result_conv = subprocess.run(
+                    [FFMPEG, "-y", "-i", tmp_path, "-ar", "16000", "-ac", "1", "-f", "wav", wav_path],
+                    capture_output=True, timeout=60,
+                )
+                if result_conv.returncode == 0:
+                    audio_path = wav_path
+                else:
+                    logger.warning("ffmpeg conversion failed, using raw webm")
+
             result = self._model.transcribe(
-                tmp_path,
+                audio_path,
                 language=language,
                 task="transcribe",
+                fp16=False,
             )
 
             transcript = result.get("text", "").strip()
@@ -90,6 +128,10 @@ class WhisperService:
             raise
 
         finally:
-            # Always clean up temp file — never conditional on success
-            if tmp_path and os.path.exists(tmp_path):
-                os.unlink(tmp_path)
+            # Always clean up temp files — never conditional on success
+            for path in [tmp_path, wav_path]:
+                if path and os.path.exists(path):
+                    try:
+                        os.unlink(path)
+                    except Exception:
+                        pass
