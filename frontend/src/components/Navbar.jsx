@@ -2,21 +2,38 @@ import StatusBadge from "./StatusBadge";
 
 export default function Navbar() {
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 h-16 bg-panel border-b border-[#1E2A3A] flex items-center justify-between px-6">
+    <nav className="fixed top-0 left-0 right-0 z-50 h-16 bg-[#111827]/95 backdrop-blur-sm border-b border-[#1E2A3A] flex items-center justify-between px-6">
+      {/* Logo + name */}
       <div className="flex items-center gap-3">
+        {/* Icon logo — standalone icon, no background */}
         <img
           src="/Logo/Afyavox Logo icon.png"
-          alt="AfyaVox AI"
-          className="w-10 h-10 object-contain"
+          alt="AfyaVox"
+          className="w-9 h-9 object-contain"
+          onError={(e) => {
+            // Fallback: show a cyan circle with A
+            e.target.style.display = "none";
+            e.target.nextSibling.style.display = "flex";
+          }}
         />
-        <div>
-          <span className="text-white font-semibold text-lg tracking-wide">AfyaVox</span>
-          <span className="text-[#00D4FF] font-semibold text-lg"> AI</span>
+        {/* Fallback icon */}
+        <div
+          style={{ display: "none" }}
+          className="w-9 h-9 rounded-full bg-[#00D4FF]/20 border border-[#00D4FF]/40 items-center justify-center text-[#00D4FF] font-bold text-sm"
+        >
+          A
+        </div>
+        <div className="flex items-baseline gap-0.5">
+          <span className="text-white font-bold text-lg tracking-tight">Afya</span>
+          <span className="text-[#00D4FF] font-bold text-lg tracking-tight">Vox</span>
+          <span className="text-[#8892A4] font-medium text-sm ml-1">AI</span>
         </div>
       </div>
-      <div className="flex items-center gap-4">
+
+      {/* Right side */}
+      <div className="flex items-center gap-3">
         <StatusBadge />
-        <span className="text-muted text-xs hidden sm:block">v1.0</span>
+        <span className="text-[#8892A4]/50 text-xs hidden sm:block">v1.0</span>
       </div>
     </nav>
   );

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef } from "react";
 import MicButton from "./MicButton";
 import WaveformVisualizer from "./WaveformVisualizer";
 import TimerDisplay from "./TimerDisplay";
@@ -6,24 +6,23 @@ import TimerDisplay from "./TimerDisplay";
 const STATES = {
   IDLE: "idle",
   RECORDING: "recording",
-  PROCESSING: "processing",
+  UPLOADING: "uploading",
+  TRANSCRIBING: "transcribing",
   DONE: "done",
   ERROR: "error",
 };
 
-const WS_URL = "ws://localhost:8001/ws/transcribe";
-const CHUNK_INTERVAL_MS = 2000; // send audio chunk every 2 seconds for live transcription
+const API_BASE = "http://localhost:8001";
 
 export default function RecorderPanel({ onTranscriptReceived, onPartialTranscript }) {
   const [state, setState] = useState(STATES.IDLE);
   const [error, setError] = useState(null);
   const [stream, setStream] = useState(null);
+  const [retryBlob, setRetryBlob] = useState(null);
   const mediaRef = useRef(null);
-  const wsRef = useRef(null);
   const chunksRef = useRef([]);
-  const chunkTimerRef = useRef(null);
+  const wsRef = useRef(null);
 
-  // Check MediaRecorder support
   if (typeof MediaRecorder === "undefined") {
     return (
       <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-yellow-400 text-sm text-center">
@@ -32,92 +31,123 @@ export default function RecorderPanel({ onTranscriptReceived, onPartialTranscrip
     );
   }
 
-  const sendChunk = useCallback(() => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    if (chunksRef.current.length === 0) return;
-
-    // Take all accumulated chunks, send as one blob, reset buffer
-    const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-    chunksRef.current = [];
-
-    blob.arrayBuffer().then((buf) => {
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(buf);
-      }
-    });
-  }, []);
-
-  const startRecording = async () => {
-    setError(null);
-
+  // ── WebSocket live preview (best-effort, non-blocking) ──────────
+  const startLivePreview = (mediaStream) => {
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      setStream(mediaStream);
-      chunksRef.current = [];
-
-      // Open WebSocket connection
-      const ws = new WebSocket(WS_URL);
+      const ws = new WebSocket(`ws://localhost:8001/ws/transcribe`);
       wsRef.current = ws;
+      const previewChunks = [];
+      let previewTimer = null;
 
       ws.onopen = () => {
-        // Start sending chunks every CHUNK_INTERVAL_MS for live transcription
-        chunkTimerRef.current = setInterval(sendChunk, CHUNK_INTERVAL_MS);
+        previewTimer = setInterval(() => {
+          if (previewChunks.length === 0) return;
+          const blob = new Blob(previewChunks.splice(0), { type: "audio/webm" });
+          blob.arrayBuffer().then(buf => {
+            if (ws.readyState === WebSocket.OPEN) ws.send(buf);
+          });
+        }, 2500);
       };
 
-      ws.onmessage = (event) => {
+      ws.onmessage = (e) => {
         try {
-          const msg = JSON.parse(event.data);
-
-          if (msg.type === "partial") {
-            // Live update — show text as it arrives
+          const msg = JSON.parse(e.data);
+          if (msg.type === "partial" && msg.full) {
             onPartialTranscript?.({
               transcript: msg.full,
               language: msg.language,
               status: "streaming",
             });
-          } else if (msg.type === "error") {
-            console.warn("Transcription chunk error:", msg.message);
           }
-        } catch (e) {
-          console.error("WS message parse error:", e);
-        }
+        } catch {}
       };
 
-      ws.onerror = () => {
-        // WebSocket failed — fall back to regular upload
-        clearInterval(chunkTimerRef.current);
-        fallbackUpload(mediaStream);
-      };
+      ws.onerror = () => { clearInterval(previewTimer); };
+      ws.onclose = () => { clearInterval(previewTimer); };
 
-      ws.onclose = () => {
-        clearInterval(chunkTimerRef.current);
+      // Feed preview chunks from MediaRecorder
+      const previewRecorder = new MediaRecorder(mediaStream, { mimeType: "audio/webm" });
+      previewRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) previewChunks.push(e.data);
       };
+      previewRecorder.start(500);
 
-      // Set up MediaRecorder
+      return () => {
+        previewRecorder.stop();
+        clearInterval(previewTimer);
+        ws.close();
+      };
+    } catch {
+      return () => {};
+    }
+  };
+
+  // ── Main upload after recording stops ──────────────────────────
+  const uploadBlob = async (blob) => {
+    setState(STATES.UPLOADING);
+    setRetryBlob(blob);
+
+    try {
+      const form = new FormData();
+      form.append("audio", blob, "recording.webm");
+
+      setState(STATES.TRANSCRIBING);
+      const res = await fetch(`${API_BASE}/api/transcribe`, {
+        method: "POST",
+        body: form,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: `Server error ${res.status}` }));
+        if (res.status === 413) throw new Error("Recording too large (max 100 MB). Please record a shorter session.");
+        if (res.status === 422) throw new Error("Audio could not be processed. Please try recording again.");
+        throw new Error(err.detail || `Server error ${res.status}`);
+      }
+
+      const data = await res.json();
+
+      if (data.status === "no_speech_detected") {
+        setError("No speech detected. Please speak clearly and try again.");
+        setState(STATES.ERROR);
+        return;
+      }
+
+      onTranscriptReceived?.(data);
+      setState(STATES.DONE);
+      setRetryBlob(null);
+
+    } catch (err) {
+      setError(err.message || "Upload failed. Check your connection and try again.");
+      setState(STATES.ERROR);
+    }
+  };
+
+  const startRecording = async () => {
+    setError(null);
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setStream(mediaStream);
+      chunksRef.current = [];
+
+      // Start live WebSocket preview (non-blocking)
+      const stopPreview = startLivePreview(mediaStream);
+
+      // Main recorder — collects full audio for reliable POST upload
       const recorder = new MediaRecorder(mediaStream, { mimeType: "audio/webm" });
-
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
-
       recorder.onstop = () => {
-        // Send final remaining chunk
-        sendChunk();
-        mediaStream.getTracks().forEach((t) => t.stop());
+        stopPreview();
+        wsRef.current?.close();
+        mediaStream.getTracks().forEach(t => t.stop());
         setStream(null);
-        setState(STATES.PROCESSING);
-
-        // Close WebSocket after short delay to let final chunk process
-        setTimeout(() => {
-          ws.close();
-          setState(STATES.DONE);
-          // Signal done with whatever was accumulated
-          onTranscriptReceived?.({ status: "done" });
-        }, 1500);
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        uploadBlob(blob);
       };
 
       mediaRef.current = recorder;
-      recorder.start(500); // collect data every 500ms
+      recorder.start(250);
       setState(STATES.RECORDING);
 
     } catch (err) {
@@ -130,40 +160,12 @@ export default function RecorderPanel({ onTranscriptReceived, onPartialTranscrip
     }
   };
 
-  // Fallback: if WebSocket fails, do a regular POST upload
-  const fallbackUpload = async (mediaStream) => {
-    setState(STATES.PROCESSING);
-    const allChunks = [...chunksRef.current];
-    chunksRef.current = [];
-    mediaStream.getTracks().forEach((t) => t.stop());
-    setStream(null);
-
-    try {
-      const blob = new Blob(allChunks, { type: "audio/webm" });
-      const form = new FormData();
-      form.append("audio", blob, "recording.webm");
-      const res = await fetch("http://localhost:8001/api/transcribe", {
-        method: "POST",
-        body: form,
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: `Server error ${res.status}` }));
-        if (res.status === 413) throw new Error("Recording is too large (max 100 MB).");
-        if (res.status === 422) throw new Error("Audio could not be processed. Please try again.");
-        throw new Error(err.detail || `Server error ${res.status}`);
-      }
-      const data = await res.json();
-      onTranscriptReceived?.(data);
-      setState(STATES.DONE);
-    } catch (err) {
-      setError(err.message || "Upload failed. Check your connection and try again.");
-      setState(STATES.ERROR);
-    }
+  const stopRecording = () => {
+    mediaRef.current?.stop();
   };
 
-  const stopRecording = () => {
-    clearInterval(chunkTimerRef.current);
-    mediaRef.current?.stop();
+  const retry = () => {
+    if (retryBlob) uploadBlob(retryBlob);
   };
 
   const handleMicClick = () => {
@@ -174,15 +176,17 @@ export default function RecorderPanel({ onTranscriptReceived, onPartialTranscrip
   const stateLabel = {
     idle: "Tap mic to start recording",
     recording: "Recording — speak now...",
-    processing: "Processing final audio...",
+    uploading: "Uploading audio...",
+    transcribing: "Transcribing with Whisper...",
     done: "Done — tap mic to record again",
     error: "Error",
   };
 
   const stateColor = {
     idle: "text-[#8892A4]",
-    recording: "text-[#FF3B5C]",
-    processing: "text-[#00D4FF]",
+    recording: "text-[#FF3B5C] animate-pulse",
+    uploading: "text-[#00D4FF]",
+    transcribing: "text-[#7B61FF]",
     done: "text-[#00FF88]",
     error: "text-[#FF3B5C]",
   };
@@ -200,7 +204,7 @@ export default function RecorderPanel({ onTranscriptReceived, onPartialTranscrip
         </div>
       </div>
 
-      {/* Live waveform */}
+      {/* Waveform */}
       <WaveformVisualizer stream={stream} active={state === STATES.RECORDING} />
 
       {/* Mic button */}
@@ -211,8 +215,8 @@ export default function RecorderPanel({ onTranscriptReceived, onPartialTranscrip
         </span>
       </div>
 
-      {/* Processing spinner */}
-      {state === STATES.PROCESSING && (
+      {/* Upload/transcribing spinner */}
+      {(state === STATES.UPLOADING || state === STATES.TRANSCRIBING) && (
         <div
           data-testid="upload-indicator"
           className="flex items-center justify-center gap-2 text-[#00D4FF] text-sm"
@@ -221,7 +225,7 @@ export default function RecorderPanel({ onTranscriptReceived, onPartialTranscrip
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
           </svg>
-          Finalising transcript...
+          {state === STATES.UPLOADING ? "Uploading audio..." : "Transcribing with Whisper AI..."}
         </div>
       )}
 
@@ -229,19 +233,28 @@ export default function RecorderPanel({ onTranscriptReceived, onPartialTranscrip
       {state === STATES.ERROR && error && (
         <div className="rounded-lg border border-[#FF3B5C]/30 bg-[#FF3B5C]/10 p-3 flex items-start justify-between gap-3">
           <p className="text-[#FF3B5C] text-sm">{error}</p>
-          <button
-            onClick={() => { setState(STATES.IDLE); setError(null); }}
-            className="text-xs px-3 py-1 rounded-lg border border-[#8892A4] text-[#8892A4] hover:bg-white/5 transition-colors shrink-0"
-          >
-            Dismiss
-          </button>
+          <div className="flex gap-2 shrink-0">
+            {retryBlob && (
+              <button
+                onClick={retry}
+                className="text-xs px-3 py-1 rounded-lg border border-[#00D4FF] text-[#00D4FF] hover:bg-[#00D4FF]/10 transition-colors"
+              >
+                Retry
+              </button>
+            )}
+            <button
+              onClick={() => { setState(STATES.IDLE); setError(null); }}
+              className="text-xs px-3 py-1 rounded-lg border border-[#8892A4] text-[#8892A4] hover:bg-white/5 transition-colors"
+            >
+              Dismiss
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Live transcription hint */}
       {state === STATES.RECORDING && (
         <p className="text-center text-[#8892A4]/60 text-xs">
-          ✦ Transcript appears live below as you speak
+          ✦ Live transcript appears below as you speak
         </p>
       )}
     </div>

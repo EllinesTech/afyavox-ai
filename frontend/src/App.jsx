@@ -9,30 +9,16 @@ export default function App() {
   const [transcriptStatus, setTranscriptStatus] = useState("idle");
   const [transcriptError, setTranscriptError] = useState(null);
 
-  // Called every 2 seconds with live partial text while recording
+  // Live partial transcript from WebSocket (best-effort preview)
   const handlePartialTranscript = (partial) => {
     setTranscriptionResult(partial);
     setTranscriptStatus("streaming");
     setTranscriptError(null);
   };
 
-  // Called when recording fully stops
+  // Final reliable transcript from POST upload
   const handleTranscriptReceived = (result) => {
     if (!result) return;
-
-    if (result.status === "no_speech_detected") {
-      setTranscriptStatus("error");
-      setTranscriptError("No speech detected. Please try again.");
-      return;
-    }
-
-    if (result.status === "done") {
-      // Streaming session ended — keep whatever partial text we have
-      setTranscriptStatus("done");
-      return;
-    }
-
-    // Fallback upload result
     setTranscriptionResult(result);
     setTranscriptStatus("done");
     setTranscriptError(null);
@@ -44,20 +30,19 @@ export default function App() {
 
       <main className="pt-20 pb-12 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto">
 
-        {/* Hero */}
+        {/* Hero — logo with transparent background */}
         <div className="text-center mb-8">
           <img
             src="/Logo/Afyavox Logo big no bg.png"
             alt="AfyaVox AI"
-            className="h-16 mx-auto mb-4 object-contain"
-            onError={(e) => { e.target.style.display = "none"; }}
+            className="h-20 mx-auto mb-3 object-contain drop-shadow-[0_0_20px_rgba(0,212,255,0.3)]"
+            onError={(e) => {
+              e.target.style.display = "none";
+            }}
           />
-          <h1 className="text-2xl font-bold text-white mb-2">
-            Afya<span className="text-[#00D4FF]">Vox</span> AI
-          </h1>
-          <p className="text-[#8892A4] text-sm max-w-xl mx-auto">
-            Speak in any language. Watch the transcript appear live.
-            Get structured clinical notes instantly. 200+ languages worldwide.
+          <p className="text-[#8892A4] text-sm max-w-xl mx-auto leading-relaxed">
+            Speak in any language. Watch the transcript appear live.<br/>
+            Get structured clinical notes instantly. <span className="text-[#00D4FF]">200+ languages worldwide.</span>
           </p>
         </div>
 
@@ -69,7 +54,7 @@ export default function App() {
           />
         </div>
 
-        {/* Transcript + Notes */}
+        {/* Transcript + Notes side by side */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <TranscriptPanel
             transcript={transcriptionResult?.transcript || ""}
@@ -80,7 +65,7 @@ export default function App() {
           <NotesPanel notes={null} status="idle" />
         </div>
 
-        <p className="text-center text-[#8892A4]/40 text-xs mt-8">
+        <p className="text-center text-[#8892A4]/40 text-xs mt-10">
           AfyaVox AI v1.0 · © Ellines Tech · Elijah Mwangi
         </p>
       </main>

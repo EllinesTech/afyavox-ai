@@ -6,7 +6,7 @@ export default function StatusBadge() {
   useEffect(() => {
     const check = async () => {
       try {
-        const res = await fetch("http://localhost:8000/health");
+        const res = await fetch("http://localhost:8001/health");
         setStatus(res.ok ? "connected" : "offline");
       } catch {
         setStatus("offline");
